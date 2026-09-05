@@ -1,7 +1,7 @@
 """
 Chạy toàn bộ agent trên bộ giả lập, không cần credentials, không cần mạng.
 
-    python demo.py
+    python tools/demo.py
     python run.py today --db demo.db     (hoặc sửa DB_PATH tạm)
 
 Dùng để xem agent hoạt động ra sao trước khi bạn đụng vào lịch thật.
@@ -12,7 +12,7 @@ import sys
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import calendar_ops as ops
 import config as cfg
@@ -20,7 +20,8 @@ import store
 import sync
 from tests.fake_calendar import FakeCalendar
 
-DB = "demo.db"
+DB = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "demo.db")
 
 
 def iso(dt):

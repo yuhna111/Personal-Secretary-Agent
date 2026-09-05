@@ -1,7 +1,7 @@
 """
 Sinh file .ics từ thời khoá biểu PTIT để nhập vào Google Calendar.
 
-    python make_schedule.py
+    python tools/make_schedule.py
 
 Vì sao .ics chứ không phải .csv: bản nhập CSV của Google KHÔNG hỗ trợ lịch
 lặp. Sáu môn học suốt một kỳ sẽ thành hàng trăm sự kiện rời rạc, sửa một
@@ -11,6 +11,7 @@ lặp hàng tuần.
 SỬA HAI DÒNG NGÀY THÁNG BÊN DƯỚI TRƯỚC KHI CHẠY.
 """
 
+import os
 from datetime import datetime, timedelta
 
 # ---------------------------------------------------------------- CẦN SỬA
@@ -22,7 +23,9 @@ WEEK_MONDAY = "2026-09-07"
 # Ngày cuối cùng còn học (hết học kỳ 1).
 SEMESTER_END = "2027-03-15"
 
-OUT = "lich-hoc.ics"
+# Xuất ra thư mục gốc dự án, không phải cạnh script.
+OUT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lich-hoc.ics")
 
 # ---------------------------------------------------------------- Lịch học
 # (thứ, giờ bắt đầu, giờ kết thúc, tên môn, phòng, giảng viên)
@@ -149,7 +152,7 @@ def main():
     with open(OUT, "w", encoding="utf-8", newline="\r\n") as f:
         f.write("\n".join(out) + "\n")
 
-    print(f"Đã tạo {OUT}")
+    print(f"Đã tạo {os.path.basename(OUT)}")
     print(f"  {len(CLASSES)} môn lặp hàng tuần")
     print(f"  {len(ONE_OFF)} buổi dạy thêm (một lần)")
     if ADD_MEALS:
