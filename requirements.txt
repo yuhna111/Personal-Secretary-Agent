@@ -1,0 +1,20 @@
+# Cài tất cả:  pip install -r requirements.txt
+
+google-api-python-client
+google-auth
+google-auth-oauthlib
+requests
+
+# BẮT BUỘC trên Windows.
+# Linux/macOS có sẵn cơ sở dữ liệu múi giờ IANA ở cấp hệ điều hành,
+# Windows thì không -> ZoneInfo("Asia/Ho_Chi_Minh") báo
+# ZoneInfoNotFoundError nếu thiếu gói này.
+tzdata
+
+# --------------------------------------------------------------- Tầng 4
+# Chỉ cần cho lệnh `note` và `ask`. Không cài thì 14 lệnh còn lại
+# vẫn chạy bình thường — LLM là lớp tiện nghi, không phải lớp nền.
+#
+# Gemini (MIỄN PHÍ) và Ollama dùng REST qua `requests`, KHÔNG cần
+# cài thêm gì. Dòng dưới chỉ cần nếu bạn chọn Anthropic.
+# anthropic
