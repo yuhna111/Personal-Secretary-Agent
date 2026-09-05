@@ -32,6 +32,7 @@ import ask as ask_mod
 import auth
 import calendar_ops as ops
 import config as cfg
+import estimate as est_mod
 import golive as gl
 import inbox
 import llm
@@ -229,10 +230,18 @@ def cmd_progress(a):
     rem = T.remaining(row)
     sign = "+" if a.minutes >= 0 else "-"
     print(f"  {sign}{T.fmt_min(abs(a.minutes))}")
-    if rem <= 0:
-        print(f"  XONG  (mở lại: python run.py reopen {tid})")
-    else:
+
+    if rem > 0:
         print(f"  còn lại {T.fmt_min(rem)}")
+    else:
+        over = T.over_estimate(row)
+        if over > 0:
+            print(f"  đã VƯỢT ước tính {T.fmt_min(over)} "
+                  f"({T.fmt_min(row['done_min'])} / {T.fmt_min(row['est_min'])})")
+        else:
+            print(f"  đã đạt đúng ước tính {T.fmt_min(row['est_min'])}")
+        print(f"  Chưa xong thì cứ ghi tiếp. Xong rồi:  "
+              f"python run.py done {a.task_id}")
     conn.close()
     return 0
 
@@ -613,6 +622,73 @@ def cmd_golive(a):
     return 0 if failed == 0 else 1
 
 
+
+# ================================================================ Tầng 6
+def cmd_accuracy(a):
+    """Ước tính của bạn sai bao nhiêu?"""
+    conn = _conn()
+    r = est_mod.analyze(conn)
+
+    print("\nĐỘ CHÍNH XÁC ƯỚC TÍNH\n" + "=" * 54)
+
+    if r["n"] == 0:
+        print("\n  Chưa có việc nào vừa ĐÃ ĐÓNG vừa có ghi nhận thời gian.")
+        print("\n  Cần hai thứ cho mỗi việc:")
+        print("    python run.py progress <số> <phút>   ghi thời gian đã làm")
+        print("    python run.py done <số>              đóng khi thật sự xong")
+        conn.close()
+        return 0
+
+    print(f"\n  Dựa trên {r['n']} việc đã hoàn thành\n")
+    print(f"  {'Việc':<32} {'nghĩ':>6} {'thực tế':>8} {'tỉ lệ':>7}")
+    print("  " + "-" * 56)
+    for x in r["samples"][-12:]:
+        mark = " *" if abs(x["ratio"] - 1.0) < 0.02 else ""
+        print(f"  {x['title'][:30]:<32} {T.fmt_min(x['est']):>6} "
+              f"{T.fmt_min(x['done']):>8} {x['ratio']:>6.2f}{mark}")
+
+    f = r["factor"]
+    print(f"\n  HỆ SỐ CỦA BẠN: x{f:.2f}")
+    if r["n"] < est_mod.MIN_SAMPLES:
+        print(f"    (mới {r['n']}/{est_mod.MIN_SAMPLES} mẫu — đang co về 1.00, "
+              f"chưa tin được)")
+    else:
+        print(f"    Việc bạn nghĩ 60 phút -> thực tế khoảng "
+              f"{f * 60:.0f} phút")
+        print(f"    Việc bạn nghĩ 2 tiếng -> thực tế khoảng "
+              f"{T.fmt_min(f * 120)}")
+    if r["spread"]:
+        lo, hi = r["spread"]
+        print(f"    Dao động thường thấy: x{lo:.2f} đến x{hi:.2f}")
+
+    if r["warnings"]:
+        print("\n  CẢNH BÁO VỀ DỮ LIỆU")
+        print("  " + "-" * 52)
+        for w in r["warnings"]:
+            for i, line in enumerate(_wrap(w, 52)):
+                print(f"    {line}" if i == 0 else f"    {line}")
+            print()
+
+    if r["confident"]:
+        print("  Dữ liệu đủ tin. Khi thêm việc mới, nhân ước tính của bạn")
+        print(f"  với {f:.2f} sẽ sát thực tế hơn.")
+    conn.close()
+    return 0
+
+
+def _wrap(text, width):
+    words, lines, cur = text.split(), [], ""
+    for w in words:
+        if len(cur) + len(w) + 1 > width:
+            lines.append(cur)
+            cur = w
+        else:
+            cur = f"{cur} {w}".strip()
+    if cur:
+        lines.append(cur)
+    return lines
+
+
 # ================================================================== parser
 def build_parser():
     p = argparse.ArgumentParser(prog="run.py", description="Agent thư ký cá nhân")
@@ -628,6 +704,7 @@ def build_parser():
         ("inbox", cmd_inbox, "nạp lệnh @task từ lịch"),
         ("llm", cmd_llm, "kiểm tra cấu hình LLM"),
         ("golive", cmd_golive, "kiểm tra sẵn sàng bật quyền ghi"),
+        ("accuracy", cmd_accuracy, "ước tính của bạn sai bao nhiêu"),
     ]:
         sp = sub.add_parser(name, help=help_)
         sp.set_defaults(func=fn)

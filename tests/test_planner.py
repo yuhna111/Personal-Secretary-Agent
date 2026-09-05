@@ -250,9 +250,21 @@ def main():
     tid = T.add(conn6, "Đọc sách", 120)
     T.log_progress(conn6, tid, 50)
     check("trừ đúng phần còn lại", T.remaining(T.get(conn6, tid)) == 70)
+    # Chạm ước tính KHÔNG còn tự đóng việc — đây là thay đổi có chủ ý ở
+    # Tầng 6. Bản cũ tự đóng, khiến done_min không bao giờ vượt est_min
+    # và tỉ lệ thực tế/ước tính bị chặn cứng ở 1.0. Mà phần vượt quá mới
+    # là thứ duy nhất đáng đo.
     T.log_progress(conn6, tid, 70)
-    check("hết việc -> tự đóng", T.get(conn6, tid)["status"] == "done")
-    check("không còn trong danh sách mở", len(T.open_tasks(conn6)) == 0)
+    check("chạm ước tính vẫn còn mở", T.get(conn6, tid)["status"] == "open")
+    check("vẫn nằm trong danh sách", len(T.open_tasks(conn6)) == 1)
+
+    T.log_progress(conn6, tid, 30)
+    check("ghi vượt được ước tính", T.get(conn6, tid)["done_min"] == 150)
+
+    T.mark_done(conn6, tid)
+    check("chỉ đóng khi người dùng gọi done",
+          T.get(conn6, tid)["status"] == "done")
+    check("đóng rồi thì rời danh sách", len(T.open_tasks(conn6)) == 0)
 
     print(f"\n{'=' * 46}")
     print(f"  {PASS} PASS, {FAIL} FAIL")

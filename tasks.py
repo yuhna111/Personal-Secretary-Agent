@@ -162,14 +162,29 @@ def remaining(row):
 
 
 def log_progress(conn, task_id, minutes):
+    """
+    Ghi nhận thời gian đã làm. KHÔNG tự đóng việc.
+
+    Bản đầu tiên tự đóng khi done_min chạm est_min. Nghe hợp lý, nhưng nó
+    khiến done_min KHÔNG BAO GIỜ vượt quá est_min — nên tỉ lệ thực tế /
+    ước tính bị chặn cứng ở 1.0.
+
+    Mà phần vượt quá chính là thứ duy nhất đáng đo. Ước tính 2 tiếng mất
+    3 tiếng là thông tin; ước tính 2 tiếng mất đúng 2 tiếng vì hệ thống
+    ngừng đếm ở mốc 2 tiếng thì không phải thông tin, đó là hiện vật.
+
+    Giờ chỉ có bạn đóng việc, bằng lệnh `done`.
+    """
     conn.execute(
         "UPDATE tasks SET done_min = COALESCE(done_min,0) + ? WHERE id=?",
         (minutes, task_id),
     )
-    row = get(conn, task_id)
-    if row and remaining(row) <= 0:
-        conn.execute("UPDATE tasks SET status='done' WHERE id=?", (task_id,))
     conn.commit()
+
+
+def over_estimate(row):
+    """Đã vượt ước tính bao nhiêu phút (âm nếu chưa tới)."""
+    return float(row["done_min"] or 0) - float(row["est_min"])
 
 
 def mark_done(conn, task_id):
