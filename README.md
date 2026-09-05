@@ -1,45 +1,70 @@
-# Agent thư ký cá nhân — Tầng 1
+# Agent thư ký cá nhân
 
-Đọc/ghi Google Calendar theo thời gian thực, có bốn cầu dao an toàn.
+Trợ lý quản lý thời gian, công việc và học tập. Chạy trên máy cá nhân, nối
+trực tiếp với Google Calendar.
 
-Chưa có LLM. Chưa có logic lập kế hoạch. Đây là nền móng — 60% khối lượng công việc của cả dự án, và là phần không ai muốn làm nhưng bỏ qua thì mọi thứ sau đều mục.
+**6 tầng · 21 lệnh · 197 phép thử tự động**
+
+Thứ nó nói được mà Google Calendar không bao giờ nói:
+
+```
+KHÔNG KỊP:
+  2. Ôn Xác suất thống kê
+     cần 8h00 trước 05/09, chỉ có 5h30 -> thiếu 2h30
+
+  ('cần' là con số tích luỹ, gồm cả việc hạn sớm hơn,
+   vì bạn không làm hai việc cùng lúc được)
+```
+
+Tài liệu đầy đủ: [`docs/SO-TAY.md`](docs/SO-TAY.md)
 
 ---
 
 ## Xem thử trước khi cài gì
 
 ```
-pip install google-api-python-client google-auth google-auth-oauthlib
-python demo.py
+pip install -r requirements.txt
+python tools/demo.py
 ```
 
-Chạy toàn bộ agent trên bộ giả lập. Không cần credentials, không cần mạng, không đụng lịch thật.
+Chạy toàn bộ agent trên bộ giả lập. Không cần credentials, không cần mạng,
+không đụng lịch thật.
 
 Kiểm chứng logic:
 
 ```
 python tests/test_agent.py
+python tests/test_planner.py
+python tests/test_llm.py
+python tests/test_rollback.py
+python tests/test_estimate.py
 ```
 
-25 phép thử, gồm sync tăng dần, chống vòng lặp tự kích hoạt, và cả bốn cầu dao.
+Tổng 197 phép thử.
 
 ---
 
 ## Cài đặt — Service account (khuyên dùng)
 
-Không consent screen, không publish app, không privacy policy, **không có hạn 7 ngày**.
+Không consent screen, không publish app, không privacy policy, **không có
+hạn 7 ngày**.
 
-**1.** [console.cloud.google.com](https://console.cloud.google.com) → tạo project → APIs & Services → Library → **Google Calendar API** → Enable
+**1.** [console.cloud.google.com](https://console.cloud.google.com) → tạo
+project → APIs & Services → Library → **Google Calendar API** → Enable
 
-**2.** IAM & Admin → **Service Accounts** → Create service account → tên `agent-lich` → bỏ trống phần role → Done
+**2.** IAM & Admin → **Service Accounts** → Create service account → tên
+`agent-lich` → bỏ trống phần role → Done
 
-**3.** Bấm vào service account → tab **Keys** → Add key → Create new key → **JSON**
+**3.** Bấm vào service account → tab **Keys** → Add key → Create new key →
+**JSON**. Lưu vào thư mục dự án, đổi tên `service_account.json`
 
-Lưu file vào thư mục dự án, đổi tên thành `service_account.json`.
+**4.** Chép email service account (dạng
+`agent-lich@<project>.iam.gserviceaccount.com`)
 
-**4.** Chép email của service account (dạng `agent-lich@<project>.iam.gserviceaccount.com`)
-
-**5.** [calendar.google.com](https://calendar.google.com) → di chuột vào lịch chính → ⋮ → **Settings and sharing** → **Share with specific people or groups** → Add people → dán email vào → quyền **See all event details**
+**5.** [calendar.google.com](https://calendar.google.com) → di chuột vào lịch
+chính → ⋮ → **Settings and sharing** → **Share with specific people or
+groups** → Add people → dán email → quyền **See all event details** →
+**Send**
 
 **6.** Sửa `config.py`: `CALENDAR_ID` = địa chỉ Gmail của bạn
 
@@ -47,129 +72,193 @@ Lưu file vào thư mục dự án, đổi tên thành `service_account.json`.
 python run.py check
 ```
 
-> `CALENDAR_ID` phải là email của bạn, **không phải** `"primary"`. Với service account, `primary` trỏ vào lịch trống của chính nó.
+> Hai chỗ hay sai: `CALENDAR_ID` phải là email của bạn, **không phải**
+> `"primary"` (với service account, `primary` trỏ vào lịch trống của chính
+> nó). Và ở bước 5, dán email vào ô rồi **phải bấm Send** — quên bấm là
+> không có gì được lưu.
+
+Gặp lỗi 404 hoặc 403: `python tools/whoami.py` sẽ hỏi thẳng Google xem
+service account đang thấy được những lịch nào.
 
 ### Hạn chế
 
-Service account **không mời được người khác vào sự kiện** (cần Domain-Wide Delegation, chỉ có ở Workspace). Với thư ký chỉ xếp block lên lịch của chính bạn thì không ảnh hưởng. Khi nào cần mời họp, lúc đó mới chuyển sang OAuth.
-
-Sự kiện agent tạo hiển thị service account là người tổ chức. Nhìn hơi lạ nhưng lại tiện — phân biệt ngay sự kiện nào do agent tạo.
-
----
-
-## Cài đặt — OAuth (nếu cần mời người khác)
-
-**1–2.** Giống trên (tạo project, Enable API)
-
-**3.** `console.cloud.google.com/auth/overview` → Get started → App name, email → **External** → Create
-
-**4.** Tab **Data Access** → Add scopes → `calendar.readonly`
-
-**5.** Tab **Audience** → **PUBLISH APP**
-
-**6.** Tab **Clients** → Create client → **Desktop app** → Download JSON → đổi tên `credentials.json`
-
-**7.** `config.py`: `CALENDAR_ID = "primary"`
-
-### Cái bẫy 7 ngày
-
-Nếu bạn **bỏ qua bước 5** và để app ở trạng thái Testing, uỷ quyền hết hạn sau đúng 7 ngày. Agent chạy ngon một tuần rồi trả `invalid_grant` và bạn phải đăng nhập lại. Mỗi tuần. Vĩnh viễn.
-
-Hầu hết tutorial trên mạng bỏ qua chi tiết này vì tác giả chỉ test trong một buổi.
-
-Khi bấm PUBLISH APP, Google có thể báo *"OAuth configuration is incomplete… visit the Branding page"* — nghĩa là nó đòi **App home page** và **Privacy policy** trên một domain bạn sở hữu. Cách rẻ nhất là dựng hai trang tĩnh trên GitHub Pages rồi xác minh domain qua Google Search Console. Nếu thấy vô lý cho một app chỉ mình bạn dùng — đó chính là lý do tôi khuyên service account.
+Service account **không mời được người khác vào sự kiện** (cần Domain-Wide
+Delegation, chỉ có ở Workspace). Với thư ký chỉ xếp block lên lịch của chính
+bạn thì không ảnh hưởng.
 
 ---
 
-## Sử dụng
+## Cài đặt — LLM (tuỳ chọn)
 
-| Lệnh | Việc |
-|---|---|
-| `python run.py check` | Kiểm tra xác thực + sync một lần. **Chạy cái này trước** |
-| `python run.py sync` | Đồng bộ một lần rồi thoát |
-| `python run.py watch` | Vòng lặp, poll mỗi 90 giây |
-| `python run.py today` | In lịch hôm nay từ bản sao cục bộ |
-| `python run.py log` | Agent đã làm / định làm những gì |
+Chỉ cần cho hai lệnh `note` và `ask`. Không cài thì **19 lệnh còn lại vẫn
+chạy bình thường** — LLM là lớp tiện nghi, không phải lớp nền.
 
----
+**Gemini — miễn phí, không cần thẻ tín dụng:**
 
-## Bốn quyết định thiết kế
-
-### 1. syncToken thay cho webhook
-
-Google Calendar có push notification thật, nhưng nó đòi domain đã xác minh, HTTPS hợp lệ, và channel hết hạn sau vài ngày nên phải có job gia hạn — bốn bộ phận phải bảo trì, đổi lấy một tín hiệu "có gì đó đã đổi" mà bạn vẫn phải gọi API để biết đổi cái gì.
-
-`syncToken` cho kết quả tương đương với một phần công sức. Không đổi gì thì trả về rỗng, gần như miễn phí.
-
-**Hệ quả tốt:** không cần webhook nghĩa là không cần IP công khai. Chạy được trên máy ở nhà, Raspberry Pi, hay cron của GitHub Actions. VPS thành tuỳ chọn.
-
-Khi token hết hạn Google trả `410 Gone` — không phải lỗi, agent tự làm full sync lại.
-
-### 2. extendedProperties làm nơi chứa state
-
-Mỗi sự kiện cho phép đính kèm dữ liệu key-value riêng tư mà giao diện Calendar không hiển thị:
-
-```json
-"extendedProperties": {"private": {
-  "agent": "v1", "rev": "a3f9c2e18b04", "task_id": "7"
-}}
+```
+setx GEMINI_API_KEY "AQ..."
 ```
 
-Hai công dụng:
+Lấy key tại [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+Sau `setx` phải **mở lại terminal**.
 
-- **Chống vòng lặp tự kích hoạt.** Agent ghi một sự kiện → sync lần sau thấy đó là "thay đổi mới" → agent phản ứng với chính hành động của mình → vòng lặp vô hạn ghi vào lịch thật lúc 3 giờ sáng. Trường `rev` chặn việc này.
-- **State nằm ngay trên sự kiện.** Bạn kéo thả block trong app Calendar, agent đọc lại vẫn biết block đó thuộc task nào. Không cần đồng bộ hai chiều giữa DB và lịch.
+**Ollama — miễn phí, chạy trên máy bạn:**
 
-### 3. Bốn cầu dao
+```
+ollama pull qwen2.5:7b
+setx LLM_PROVIDER ollama
+```
 
-| Cầu dao | Chặn cái gì |
+Kiểm tra:
+
+```
+python run.py llm
+```
+
+---
+
+## 21 lệnh
+
+### Kết nối
+| Lệnh | Việc |
 |---|---|
-| `can_write()` | Scope readonly thì mọi thao tác ghi bị từ chối |
-| `SHADOW_MODE` | Chỉ ghi log, không gọi API. **Mặc định BẬT** |
-| `QUIET_HOURS` | Không hành động 22h–7h |
-| `MAX_WRITES_PER_DAY` | Trần thao tác/ngày, chống vòng lặp hỏng |
+| `check` | Kiểm tra xác thực + sync. **Chạy đầu tiên khi có vấn đề** |
+| `sync` | Đồng bộ một lần |
+| `watch` | Vòng lặp, poll mỗi 90 giây |
+| `llm` | Kiểm tra cấu hình LLM, gọi thử một lần thật |
+| `golive` | Kiểm tra đã sẵn sàng bật quyền ghi chưa |
 
-Cộng thêm một luật cứng trong code: **agent chỉ được sửa/xoá sự kiện do chính nó tạo.** Đụng vào sự kiện của bạn hoặc của người khác là thao tác không hoàn tác được, phải hỏi trước.
+### Xem
+| Lệnh | Việc |
+|---|---|
+| `brief` | **Lệnh chính.** Lịch + việc + khả thi + đề xuất |
+| `today` | Lịch hôm nay |
+| `review` | Đối chiếu cuối ngày |
+| `log` | Nhật ký hành động |
+| `accuracy` | Hệ số lạm phát ước tính của bạn |
 
-Chế độ hỏng của agent tự chủ không phải là nó ngu, mà là nó làm sai lúc bạn đang ngủ. Một lần tự huỷ buổi họp quan trọng là bạn tắt nó vĩnh viễn.
+`brief` có `--sync` và `--email`.
 
-### 4. Xác thực bị cô lập trong một file
+### Công việc
+```
+python run.py add "Viết báo cáo" --est 4h --due 30/9
+python run.py tasks
+python run.py progress 1 45
+python run.py done 1
+python run.py reopen <id>
+python run.py inbox
+python run.py note "tuần sau nộp bài tập, chắc 3 tiếng"     (cần LLM)
+python run.py ask "tôi còn bao nhiêu việc?"                 (cần LLM)
+```
 
-`auth.py` là file duy nhất biết đang dùng service account hay OAuth. Mọi module khác chỉ gọi `get_calendar_service()`. Đổi backend = sửa một file, không đụng gì khác.
+`--est` nhận `240`, `4h`, `90m`, `1h30`. `--due` nhận `30/9`, `30/9/2026`,
+`mai`, `hôm nay`, `mốt`.
+
+Nhập từ điện thoại: tạo sự kiện trên Google Calendar tên
+`@task Ôn Xác suất | 3h | 10/9`, rồi `python run.py inbox`.
+
+### Xếp lịch
+```
+python run.py plan
+python run.py undo -n 3
+python run.py cleanup
+```
+
+---
+
+## Vòng lặp hàng ngày
+
+**Mỗi tối, ~1 phút:**
+```
+python run.py progress <số> <phút>
+```
+
+Vượt ước tính thì **cứ ghi tiếp**. Xong hẳn mới `done`. Đây là dữ liệu duy
+nhất mà không nguồn nào khác có.
+
+**Vài lần trong tuần:** `plan` rồi `log` — đọc đề xuất và đánh giá.
+
+**Vài ngày một lần:** `brief` và `accuracy`.
 
 ---
 
 ## Shadow mode
 
-`SHADOW_MODE = True` là mặc định, và nên giữ nguyên **ít nhất 3–4 tuần**.
+`SHADOW_MODE = True` là mặc định. Agent làm mọi thứ trừ bước cuối: đọc lịch,
+phát hiện xung đột, tính đề xuất, ghi vào `action_log` những gì nó *định*
+làm. Bạn chạy `python run.py log` mỗi tối và đọc.
 
-Agent làm mọi thứ trừ bước cuối: đọc lịch, phát hiện xung đột, tính toán đề xuất, ghi vào `action_log` những gì nó *định* làm. Bạn chạy `python run.py log` mỗi tối và đọc.
+Giữ nguyên **ít nhất 3–4 tuần**. Đây không phải sự thận trọng thừa — đó là
+cách duy nhất để bạn tin agent đủ mức cho nó quyền ghi vào lịch thật.
 
-Chỉ tắt shadow mode khi bạn đã đọc log 3 tuần liền mà không thấy đề xuất nào ngu ngốc. Đây không phải sự thận trọng thừa — đó là cách duy nhất để bạn tin agent đủ mức cho nó quyền ghi vào lịch thật.
+Khi thấy sẵn sàng:
 
-Khi tắt, làm theo thứ tự này:
+```
+python run.py golive
+```
 
-1. `SCOPES` → `.../auth/calendar.events`
-2. Nâng quyền chia sẻ lịch lên **Make changes to events**
-3. Xoá `token.json` nếu dùng OAuth (đổi scope phải đồng ý lại)
-4. `SHADOW_MODE = False`
+Nó kiểm tra bốn điều kiện kỹ thuật và nhắc hai câu chỉ bạn trả lời được.
+
+---
+
+## Bốn cầu dao an toàn
+
+| Cầu dao | Chặn gì |
+|---|---|
+| `can_write()` | Scope readonly thì mọi thao tác ghi bị từ chối |
+| `SHADOW_MODE` | Chỉ ghi log, không gọi API |
+| `QUIET_HOURS` | Không hành động 22h–7h |
+| `MAX_WRITES_PER_DAY` | Trần thao tác/ngày, chống vòng lặp hỏng |
+
+Cộng một luật cứng: **agent chỉ được sửa/xoá sự kiện do chính nó tạo.**
+
+Chế độ hỏng của agent tự chủ không phải là nó ngu, mà là **nó làm sai lúc bạn
+đang ngủ**. Một lần tự huỷ buổi họp quan trọng là bạn tắt nó vĩnh viễn.
 
 ---
 
 ## Cấu trúc
 
-| File | Vai trò |
-|---|---|
-| `config.py` | Cấu hình — **sửa trước tiên** |
-| `auth.py` | Xác thực, cô lập hai backend |
-| `store.py` | SQLite: bản sao lịch, syncToken, nhật ký hành động |
-| `sync.py` | Đồng bộ tăng dần, xử lý 410, chống vòng lặp |
-| `calendar_ops.py` | Lớp ghi duy nhất, chứa bốn cầu dao |
-| `run.py` | CLI |
-| `demo.py` | Chạy thử trên giả lập |
-| `tests/` | Bộ giả lập Calendar API + 25 phép thử |
+```
+personal-secretary/
+├── run.py              điểm vào duy nhất
+├── config.py           thứ bạn sửa
+├── requirements.txt
+│
+├── (15 module lõi)     auth, store, sync, calendar_ops, tasks, planner,
+│                       inbox, report, notify, rollback, golive, estimate,
+│                       llm, nlu, ask
+│
+├── tools/              script chạy tay, không phải phần lõi
+│   ├── whoami.py         chẩn đoán quyền truy cập lịch
+│   ├── demo.py           chạy thử trên lịch giả
+│   └── make_schedule.py  sinh .ics từ thời khoá biểu
+│
+├── docs/SO-TAY.md      tài liệu đầy đủ
+└── tests/              197 phép thử
+```
 
-**Đừng đưa `service_account.json`, `credentials.json`, `token.json` lên GitHub.**
+**Đừng đưa lên GitHub:** `service_account.json`, `credentials.json`,
+`token.json`, `*.db`, `.llm_model_cache`. Đã có sẵn trong `.gitignore`.
+
+---
+
+## Bốn nguyên tắc thiết kế
+
+**1. LLM đề xuất, code quyết định.** LLM ngồi ở tầng dịch ngôn ngữ, không
+ngồi ở tầng quyết định. Mọi đầu ra của nó bị code kiểm tra lại từ đầu.
+
+**2. Chế độ hỏng không phải agent ngu, mà là nó sai lúc bạn đang ngủ.** Đó là
+lý do có bốn cầu dao và luật chỉ-đụng-sự-kiện-của-chính-mình.
+
+**3. Cô lập thứ hay đổi vào một file.** `auth.py` là file duy nhất biết
+backend xác thực. `llm.py` là file duy nhất gọi API mô hình.
+`calendar_ops.py` là nơi duy nhất được ghi.
+
+**4. Test cái sẽ hỏng, không test cái dễ test.** Phần lớn 197 phép thử kiểm
+tra hệ thống có **từ chối đúng lúc** không: rào chắn SQL có chặn `DELETE`
+không, agent có từ chối xoá sự kiện của bạn không, `accuracy` có nhận ra dữ
+liệu hỏng không.
 
 ---
 
@@ -177,63 +266,11 @@ Khi tắt, làm theo thứ tự này:
 
 | Triệu chứng | Nguyên nhân |
 |---|---|
-| `404 Not Found` | `CALENDAR_ID` sai, hoặc chưa share lịch cho service account |
-| `403 Forbidden` | Chưa Enable Calendar API, hoặc quyền share thấp hơn scope đang xin |
-| `invalid_grant` | Cái bẫy 7 ngày (OAuth ở trạng thái Testing) |
-| `This app is blocked` | Tài khoản trường/công ty chặn app chưa xác minh. Dùng Gmail cá nhân |
-| Share lịch bị chặn | Quản trị viên chặn chia sẻ ra ngoài tổ chức. Phải dùng OAuth |
+| `404 Not Found` | `CALENDAR_ID` sai, hoặc quên bấm **Send** khi share lịch |
+| `403 Forbidden` | Chưa Enable Calendar API |
+| `ZoneInfoNotFoundError` | `pip install tzdata` (Windows không có sẵn CSDL múi giờ) |
+| `Sẵn sàng: KHÔNG` (llm) | Chưa mở lại terminal sau `setx` |
+| Gemini `429` | Chạm 15 request/phút bậc miễn phí. Đợi một phút |
+| `Read timed out` | Mạng chập chờn. `setx LLM_RETRIES 8` |
 
----
-
-## Tầng 5 — Bật quyền ghi
-
-Ba lệnh mới, và bạn nên có cả ba TRƯỚC khi tắt shadow mode:
-
-| Lệnh | Việc |
-|---|---|
-| `python run.py golive` | Kiểm tra đã sẵn sàng bật chưa |
-| `python run.py undo -n 3` | Gỡ 3 hành động agent vừa ghi |
-| `python run.py cleanup` | Xoá block của việc đã xong hoặc đã bỏ |
-
-### golive kiểm tra gì
-
-Bốn điều kiện đúng/sai rõ ràng: đủ 15 đề xuất, đủ 7 ngày shadow, scope cho
-phép ghi, lịch đã chia sẻ quyền `writer`.
-
-Và nhắc hai câu chỉ bạn trả lời được — quan trọng hơn bốn cái trên:
-
-1. Bạn đã **đọc** các đề xuất chưa, hay chỉ để chúng tích lại?
-2. Bao nhiêu phần trăm bạn thấy hợp lý? Trên 80% thì bật được.
-
-### Thứ tự bật
-
-1. `config.py`: `SCOPES = [".../auth/calendar.events"]`
-2. Google Calendar → Settings and sharing → quyền service account thành
-   **Make changes to events**
-3. `python run.py check`
-4. `config.py`: `SHADOW_MODE = False`
-5. `python run.py plan --limit 2` — **hai** block, không phải sáu
-6. Mở Calendar xem
-7. Không ưng: `python run.py undo -n 2`
-
-Bước 5 cố ý nhỏ. Lần ghi thật đầu tiên nên là thứ bạn gỡ được trong mười
-giây, không phải sáu sự kiện rải khắp tuần.
-
-### Ba luật an toàn không đổi
-
-- Agent chỉ sửa/xoá sự kiện **do chính nó tạo** — nhận qua nhãn trong
-  `extendedProperties.private`. Sự kiện của bạn không bao giờ bị đụng, kể
-  cả khi nó vô tình mang `task_id`.
-- `cleanup` chỉ xoá block **trong tương lai**. Block quá khứ là lịch sử.
-- Gỡ một sự kiện bạn đã tự xoá tay thì agent hiểu và bỏ qua, không báo lỗi
-  và không thử lại mãi.
-
-## Tiếp theo
-
-**Tầng 2 — bộ máy quyết định thuần code.** Phát hiện xung đột, tìm chỗ trống, kiểm tra khả thi. Vẫn chưa có LLM, và bạn sẽ ngạc nhiên vì phần lớn giá trị của "thư ký" nằm ở đây. Móc vào chỗ đã đánh dấu trong `run.py::cmd_watch`.
-
-**Tầng 6 — học thói quen.** So `est_min` với tổng `done_min` thực tế để
-tính hệ số lạm phát ước tính của bạn: nghĩ 60 phút, thực tế bao nhiêu.
-Cần khoảng 25 lần `progress` mới có gì để tính.
-
-**Tầng 4 — LLM.** Chỉ để hiểu ngôn ngữ tự nhiên và diễn đạt kết quả. Planner đề xuất JSON có cấu trúc; executor là code thuần, validate lại từ đầu rồi mới gọi API. **Không bao giờ để LLM cầm trực tiếp quyền xoá.**
+Bảng đầy đủ trong [`docs/SO-TAY.md`](docs/SO-TAY.md).
